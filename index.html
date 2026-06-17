@@ -3,23 +3,98 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
-<title>Loop Slider</title>
-<meta property="og:title" content="Loop Slider" />
-<meta property="og:description" content="Swipe puzzle game" />
-<meta name="description" content="Swipe puzzle game" />
+<title>Loop Slider Swipe Gate V10</title>
 <style>
-  :root{--bg:#0d1016;--text:#f4f7fb}
+  :root{
+    --bg:#0d1016;
+    --text:#f4f7fb;
+  }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overscroll-behavior:none;touch-action:none}
-  #stageWrap{position:relative;width:100%;height:100%;min-height:0;overflow:hidden}
+  html,body{
+    margin:0;
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    background:var(--bg);
+    color:var(--text);
+    font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    overscroll-behavior:none;
+    touch-action:none;
+  }
+  #stageWrap{
+    position:relative;
+    width:100%;
+    height:100%;
+    min-height:0;
+    overflow:hidden;
+  }
   canvas{display:block;width:100%;height:100%}
-  #resetBtn{position:absolute;left:50%;top:calc(12px + env(safe-area-inset-top));transform:translateX(-50%);z-index:10;border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:10px 22px;background:rgba(0,0,0,.56);color:#fff;font-size:15px;font-weight:900;letter-spacing:.04em;line-height:1;box-shadow:0 8px 24px rgba(0,0,0,.24);backdrop-filter:blur(8px);cursor:pointer;pointer-events:auto}
+  #resetBtn{
+    position:absolute;
+    left:50%;
+    top:calc(12px + env(safe-area-inset-top));
+    transform:translateX(-50%);
+    z-index:10;
+    border:1px solid rgba(255,255,255,.18);
+    border-radius:999px;
+    padding:10px 22px;
+    background:rgba(0,0,0,.56);
+    color:#fff;
+    font-size:15px;
+    font-weight:900;
+    letter-spacing:.04em;
+    line-height:1;
+    box-shadow:0 8px 24px rgba(0,0,0,.24);
+    backdrop-filter:blur(8px);
+    cursor:pointer;
+    pointer-events:auto;
+  }
   #resetBtn:active{transform:translateX(-50%) scale(.96)}
-  #winOverlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:20;padding:24px;background:rgba(0,0,0,.34);backdrop-filter:blur(4px);pointer-events:auto}
+  #winOverlay{
+    position:absolute;
+    inset:0;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:20;
+    padding:24px;
+    background:rgba(0,0,0,.34);
+    backdrop-filter:blur(4px);
+    pointer-events:auto;
+  }
   #winOverlay.show{display:flex}
-  #winBox{position:relative;max-width:min(88vw,420px);border:1px solid rgba(255,255,255,.18);border-radius:24px;padding:30px 28px;background:rgba(8,12,18,.88);color:#fff;box-shadow:0 18px 60px rgba(0,0,0,.42);text-align:center}
-  #winText{font-size:24px;font-weight:950;line-height:1.35;letter-spacing:.02em;white-space:nowrap}
-  #winClose{position:absolute;right:10px;top:8px;width:34px;height:34px;border:0;border-radius:999px;background:rgba(255,255,255,.10);color:#fff;font-size:24px;line-height:30px;cursor:pointer;pointer-events:auto}
+  #winBox{
+    position:relative;
+    max-width:min(88vw,420px);
+    border:1px solid rgba(255,255,255,.18);
+    border-radius:24px;
+    padding:30px 28px;
+    background:rgba(8,12,18,.88);
+    color:#fff;
+    box-shadow:0 18px 60px rgba(0,0,0,.42);
+    text-align:center;
+  }
+  #winText{
+    font-size:24px;
+    font-weight:950;
+    line-height:1.35;
+    letter-spacing:.02em;
+  }
+  #winClose{
+    position:absolute;
+    right:10px;
+    top:8px;
+    width:34px;
+    height:34px;
+    border:0;
+    border-radius:999px;
+    background:rgba(255,255,255,.10);
+    color:#fff;
+    font-size:24px;
+    line-height:30px;
+    cursor:pointer;
+    pointer-events:auto;
+  }
 </style>
 </head>
 <body>
@@ -33,6 +108,842 @@
     </div>
   </div>
 </div>
-<script src="game.js"></script>
+
+<script>
+(() => {
+  "use strict";
+
+  const canvas = document.getElementById("stage");
+  const ctx = canvas.getContext("2d");
+  const resetBtn = document.getElementById("resetBtn");
+  const winOverlay = document.getElementById("winOverlay");
+  const winClose = document.getElementById("winClose");
+
+  const STORAGE_KEY = "loop_slider_swipe_gate_v11";
+
+  const POS = { LEFT:-1, CENTER:0, RIGHT:1 };
+  const COLORS = [
+    {name:"blue", fill:"#35aaff"},
+    {name:"orange", fill:"#ff7a3d"}
+  ];
+
+  let state = null;
+  let layout = null;
+
+  let pointer = null;
+  let solvedMessageClosed = false;
+
+  const snapOffsets = [0,0];
+  let gateVisualPos = 0;
+  let gateAnim = null;
+  let rafActive = false;
+
+  function freshState(){
+    const gateRows = 4;
+    const outerCount = 18;
+    const values = Array.from({length:22},()=>0).concat(Array.from({length:22},()=>1));
+    shuffle(values);
+
+    let at = 0;
+    const take = n => values.slice(at, at += n);
+
+    return {
+      outerCount,
+      leftLoop: take(outerCount),
+      rightLoop: take(outerCount),
+      gate:{
+        position: POS.CENTER,
+        rows: gateRows,
+        leftColumn: take(gateRows),
+        rightColumn: take(gateRows)
+      },
+      moves:0
+    };
+  }
+
+  function randomState(){
+    let s = freshState();
+    while(isSolvedState(s)) s = freshState();
+    return s;
+  }
+
+  function shuffle(arr){
+    for(let i=arr.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [arr[i],arr[j]] = [arr[j],arr[i]];
+    }
+    return arr;
+  }
+
+  function save(){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({state, solvedMessageClosed})); }catch(e){}
+  }
+
+  function load(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("loop_slider_swipe_gate_v10");
+      if(!raw) return false;
+      const parsed = JSON.parse(raw);
+      const s = parsed && parsed.state ? parsed.state : parsed;
+      if(!isValidState(s)) return false;
+      state = s;
+      solvedMessageClosed = !!(parsed && parsed.state && parsed.solvedMessageClosed);
+      return true;
+    }catch(e){
+      return false;
+    }
+  }
+
+  function isValidState(s){
+    return !!(s && s.gate && Array.isArray(s.leftLoop) && Array.isArray(s.rightLoop) &&
+      Array.isArray(s.gate.leftColumn) && Array.isArray(s.gate.rightColumn) &&
+      s.gate.rows === 4 && s.leftLoop.length === s.outerCount && s.rightLoop.length === s.outerCount);
+  }
+
+  function resize(){
+    const wrap = document.getElementById("stageWrap");
+    const rect = wrap.getBoundingClientRect();
+    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    canvas.width = Math.floor(rect.width*dpr);
+    canvas.height = Math.floor(rect.height*dpr);
+    canvas.style.width = rect.width+"px";
+    canvas.style.height = rect.height+"px";
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    computeLayout(rect.width, rect.height);
+    draw();
+  }
+
+  function computeLayout(w,h){
+    const margin = Math.max(14, w*0.035);
+    const rows = state.gate.rows;
+
+    const baseSpacing = clamp(Math.min(w,h)*0.030, 15.5, 21.5);
+    const colSep = baseSpacing * 3.05;
+
+    const centerX = w/2;
+    const leftSlotX = centerX - colSep/2;
+    const rightSlotX = centerX + colSep/2;
+
+    const availableLeft = leftSlotX - margin;
+    const availableRight = w - margin - rightSlotX;
+    const loopW = Math.max(baseSpacing*6.4, Math.min(availableLeft, availableRight, w*0.31));
+    const loopH = Math.max(baseSpacing*11.6, Math.min(h*0.52, baseSpacing*16.2));
+
+    const leftOuterX = leftSlotX - loopW;
+    const rightOuterX = rightSlotX + loopW;
+    const midY = h*0.53;
+    const topY = midY - loopH/2;
+    const bottomY = midY + loopH/2;
+
+    // Match the center-column spacing to the outer rail spacing.
+    let slotLen = baseSpacing * (rows-1);
+    for(let k=0;k<6;k++){
+      const slotTop = midY - slotLen/2;
+      const slotBottom = midY + slotLen/2;
+      const outer = makeOuterPath(leftSlotX, leftOuterX, slotTop, slotBottom, topY, bottomY, midY, -1, baseSpacing);
+      const outerLen = polylineLength(outer);
+      slotLen = (rows - 1) * outerLen / (state.outerCount + 1);
+      slotLen = clamp(slotLen, baseSpacing*3.0, loopH*0.48);
+    }
+
+    const slotTop = midY - slotLen/2;
+    const slotBottom = midY + slotLen/2;
+    const gap = slotLen/(rows-1);
+
+    layout = {
+      w,h,margin,baseSpacing,spacing:gap,colSep,
+      centerX,leftSlotX,rightSlotX,leftOuterX,rightOuterX,
+      midY,topY,bottomY,loopW,loopH,
+      slotTop,slotBottom,slotLen,
+      gateW: colSep + gap*2.1,
+      gateH: slotLen + gap*2.05,
+      gateY: midY,
+      ballR: clamp(gap*0.34, 7.2, 10.2),
+      gateBallR: clamp(gap*0.34, 7.2, 10.2)
+    };
+  }
+
+  function makeOuterPath(slotX, outerX, slotTop, slotBottom, topY, bottomY, midY, sign, spacing){
+    const p0 = {x:slotX, y:slotBottom};
+    const p1 = {x:slotX + sign*spacing*1.0, y:bottomY};
+    const p2 = {x:outerX + sign*spacing*0.30, y:bottomY};
+    const p3 = {x:outerX, y:midY};
+
+    const q0 = p3;
+    const q1 = {x:outerX + sign*spacing*0.30, y:topY};
+    const q2 = {x:slotX + sign*spacing*1.0, y:topY};
+    const q3 = {x:slotX, y:slotTop};
+
+    const pts = [];
+    for(let i=0;i<=70;i++) pts.push(cubic(p0,p1,p2,p3,i/70));
+    for(let i=1;i<=70;i++) pts.push(cubic(q0,q1,q2,q3,i/70));
+    return pts;
+  }
+
+  function getOuterPathPolyline(loopIndex){
+    const left = loopIndex === 0;
+    const sign = left ? -1 : 1;
+    const slotX = left ? layout.leftSlotX : layout.rightSlotX;
+    const outerX = left ? layout.leftOuterX : layout.rightOuterX;
+    return makeOuterPath(
+      slotX, outerX,
+      layout.slotTop, layout.slotBottom,
+      layout.topY, layout.bottomY, layout.midY,
+      sign, layout.baseSpacing
+    );
+  }
+
+  function getGatePoints(loopIndex){
+    const col = activeColumnForLoop(loopIndex);
+    if(!col || isGateMoving()) return [];
+    const slotX = loopIndex === 0 ? layout.leftSlotX : layout.rightSlotX;
+    const pts = [];
+    for(let i=0;i<state.gate.rows;i++){
+      pts.push({x:slotX, y:layout.slotTop + i*layout.spacing});
+    }
+    return pts;
+  }
+
+  function getOuterPoints(loopIndex){
+    return resamplePolyline(getOuterPathPolyline(loopIndex), state.outerCount, true);
+  }
+
+  function getLoopPoints(loopIndex){
+    return getGatePoints(loopIndex).concat(getOuterPoints(loopIndex));
+  }
+
+  function gatePosName(pos){
+    if(pos === POS.LEFT) return "LEFT";
+    if(pos === POS.RIGHT) return "RIGHT";
+    return "CENTER";
+  }
+
+  function gateCenterX(posFloat=gateVisualPos){
+    return layout.centerX + posFloat * layout.colSep;
+  }
+
+  function gateColumnX(colName, posFloat=gateVisualPos){
+    const cx = gateCenterX(posFloat);
+    return colName === "leftColumn" ? cx - layout.colSep/2 : cx + layout.colSep/2;
+  }
+
+  function activeColumnForLoop(loopIndex){
+    const p = state.gate.position;
+    if(p === POS.CENTER){
+      return loopIndex === 0 ? "leftColumn" : "rightColumn";
+    }
+    if(p === POS.LEFT && loopIndex === 0) return "rightColumn";
+    if(p === POS.RIGHT && loopIndex === 1) return "leftColumn";
+    return null;
+  }
+
+  function activeColumnsSet(){
+    const set = new Set();
+    const a = activeColumnForLoop(0);
+    const b = activeColumnForLoop(1);
+    if(a) set.add(a);
+    if(b) set.add(b);
+    return set;
+  }
+
+  function canRotate(loopIndex){
+    return activeColumnForLoop(loopIndex) !== null;
+  }
+
+  function isGateMoving(){
+    return pointer?.mode === "gate" || gateAnim || Math.abs(gateVisualPos - state.gate.position) > 0.001;
+  }
+
+  function getLoopTokens(loopIndex){
+    const tokens = [];
+    const col = activeColumnForLoop(loopIndex);
+    if(col && !isGateMoving()){
+      for(let i=0;i<state.gate.rows;i++) tokens.push({kind:col, index:i});
+    }
+    const base = loopIndex === 0 ? state.leftLoop : state.rightLoop;
+    for(let i=0;i<base.length;i++) tokens.push({kind:"base", loop:loopIndex, index:i});
+    return tokens;
+  }
+
+  function readToken(t){
+    if(t.kind === "base") return t.loop === 0 ? state.leftLoop[t.index] : state.rightLoop[t.index];
+    return state.gate[t.kind][t.index];
+  }
+
+  function writeToken(t,v){
+    if(t.kind === "base"){
+      if(t.loop === 0) state.leftLoop[t.index] = v;
+      else state.rightLoop[t.index] = v;
+    } else {
+      state.gate[t.kind][t.index] = v;
+    }
+  }
+
+  function commitRotate(loopIndex, steps){
+    steps = Math.trunc(steps);
+    if(steps === 0 || !canRotate(loopIndex) || isGateMoving()) return;
+
+    const tokens = getLoopTokens(loopIndex);
+    const n = tokens.length;
+    let k = ((steps % n) + n) % n;
+    if(k === 0) return;
+
+    const vals = tokens.map(readToken);
+    const shifted = vals.slice(n-k).concat(vals.slice(0,n-k));
+    tokens.forEach((t,i)=>writeToken(t, shifted[i]));
+    state.moves += Math.abs(steps);
+    save();
+    checkSolved();
+  }
+
+  function setGatePosition(pos, fromFloat=null){
+    pos = Number(pos);
+    const start = fromFloat === null ? gateVisualPos : fromFloat;
+    if(pos !== state.gate.position) state.moves += 1;
+    state.gate.position = pos;
+    save();
+    gateAnim = {from:start, to:pos, start:performance.now(), dur:145};
+    ensureRAF();
+    checkSolved();
+  }
+
+  function reset(){
+    solvedMessageClosed = false;
+    hideWin();
+    state = randomState();
+    gateVisualPos = state.gate.position;
+    gateAnim = null;
+    snapOffsets[0] = 0;
+    snapOffsets[1] = 0;
+    save();
+    computeLayout(layout?.w || window.innerWidth, layout?.h || window.innerHeight);
+    draw();
+  }
+
+  function isSolvedState(s){
+    if(!s || !s.gate || s.gate.position !== POS.CENTER) return false;
+    const left = s.gate.leftColumn.concat(s.leftLoop);
+    const right = s.gate.rightColumn.concat(s.rightLoop);
+    if(left.length === 0 || right.length === 0) return false;
+    const lv = left[0];
+    const rv = right[0];
+    return lv !== rv && left.every(v=>v === lv) && right.every(v=>v === rv);
+  }
+
+  function checkSolved(){
+    if(isSolvedState(state) && !solvedMessageClosed){
+      showWin();
+    } else if(!isSolvedState(state)){
+      hideWin();
+    }
+  }
+
+  function showWin(){
+    winOverlay.classList.add("show");
+    winOverlay.setAttribute("aria-hidden", "false");
+  }
+
+  function hideWin(){
+    winOverlay.classList.remove("show");
+    winOverlay.setAttribute("aria-hidden", "true");
+  }
+
+  function closeWin(){
+    hideWin();
+    solvedMessageClosed = true;
+    save();
+  }
+
+  function draw(){
+    if(!state || !layout) return;
+
+    ctx.clearRect(0,0,layout.w,layout.h);
+    drawBackground();
+    drawGateSnapGuides();
+    drawRails();
+    drawLoopBalls(0);
+    drawLoopBalls(1);
+    drawInactiveGateBalls();
+    drawGateHandle();
+  }
+
+  function drawBackground(){
+    const L = layout;
+    const grad = ctx.createLinearGradient(0,0,0,L.h);
+    grad.addColorStop(0,"#171b24");
+    grad.addColorStop(1,"#0d1016");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,L.w,L.h);
+
+    ctx.save();
+    ctx.globalAlpha = .08;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1;
+    for(let x=-L.h;x<L.w+L.h;x+=36){
+      ctx.beginPath();
+      ctx.moveTo(x,0);
+      ctx.lineTo(x+L.h,L.h);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawRails(){
+    for(let li=0; li<2; li++){
+      const active = canRotate(li) && !isGateMoving();
+      const outer = getOuterPathPolyline(li);
+      const slotX = li === 0 ? layout.leftSlotX : layout.rightSlotX;
+
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      drawPolyline(outer, "#05070a", layout.ballR*4.7);
+      drawPolyline(outer, "#171c25", layout.ballR*3.9);
+      drawPolyline(outer, active ? "rgba(168,221,255,.42)" : "rgba(255,155,155,.34)", 3.5, !active);
+
+      // ゲート列に融合する縦レール。
+      ctx.beginPath();
+      ctx.moveTo(slotX, layout.slotTop);
+      ctx.lineTo(slotX, layout.slotBottom);
+      ctx.strokeStyle = "#05070a";
+      ctx.lineWidth = layout.ballR*4.7;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(slotX, layout.slotTop);
+      ctx.lineTo(slotX, layout.slotBottom);
+      ctx.strokeStyle = active ? "#171c25" : "rgba(40,30,30,.56)";
+      ctx.lineWidth = layout.ballR*3.9;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(slotX, layout.slotTop);
+      ctx.lineTo(slotX, layout.slotBottom);
+      ctx.strokeStyle = active ? "rgba(168,221,255,.75)" : "rgba(255,155,155,.58)";
+      ctx.lineWidth = 3.5;
+      if(!active) ctx.setLineDash([7,7]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.restore();
+    }
+  }
+
+  function drawPolyline(points, color, width, dashed=false){
+    if(!points.length) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for(let i=1;i<points.length;i++) ctx.lineTo(points[i].x, points[i].y);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    if(dashed) ctx.setLineDash([7,7]);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawGateSnapGuides(){
+    const L = layout;
+    ctx.save();
+    for(const pos of [POS.LEFT, POS.CENTER, POS.RIGHT]){
+      const cx = L.centerX + pos * L.colSep;
+      const leftX = cx - L.colSep/2;
+      const rightX = cx + L.colSep/2;
+      const alpha = pos === state.gate.position ? .18 : .055;
+
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4,7]);
+
+      ctx.beginPath();
+      ctx.moveTo(leftX, L.slotTop - L.spacing*0.45);
+      ctx.lineTo(leftX, L.slotBottom + L.spacing*0.45);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(rightX, L.slotTop - L.spacing*0.45);
+      ctx.lineTo(rightX, L.slotBottom + L.spacing*0.45);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawGateHandle(){
+    const L = layout;
+    const x = gateCenterX();
+    const yTop = L.topY - L.spacing*0.58;
+    const yBottom = L.bottomY + L.spacing*0.58;
+    const w = L.colSep * .82;
+
+    ctx.save();
+    for(const y of [yTop, yBottom]){
+      roundRect(x-w/2, y-5, w, 10, 6);
+      ctx.fillStyle = "rgba(215,236,255,.22)";
+      ctx.fill();
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = "rgba(215,236,255,.62)";
+      ctx.stroke();
+    }
+
+    ctx.font = "900 13px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(255,255,255,.52)";
+    ctx.fillText("⇆", x, yTop - 9);
+    ctx.restore();
+  }
+
+  function drawLoopBalls(loopIndex){
+    const tokens = getLoopTokens(loopIndex);
+    const points = getLoopPoints(loopIndex);
+    if(tokens.length !== points.length) return;
+
+    let offset = snapOffsets[loopIndex];
+    if(pointer && pointer.mode === "loop" && pointer.loopIndex === loopIndex){
+      offset = pointer.loopOffset;
+    }
+
+    for(let i=0;i<tokens.length;i++){
+      const p = pointAtIndex(points, i + offset);
+      const v = readToken(tokens[i]);
+      drawBall(p.x, p.y, COLORS[v].fill, layout.ballR);
+    }
+  }
+
+  function drawInactiveGateBalls(){
+    const moving = isGateMoving();
+    const active = moving ? new Set() : activeColumnsSet();
+
+    for(const col of ["leftColumn","rightColumn"]){
+      if(active.has(col)) continue;
+
+      const x = gateColumnX(col);
+      const arr = state.gate[col];
+
+      for(let i=0;i<arr.length;i++){
+        const y = layout.slotTop + i*layout.spacing;
+        drawBall(x, y, COLORS[arr[i]].fill, layout.gateBallR);
+      }
+    }
+  }
+
+  function drawBall(x,y,color,r){
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x,y,r,0,Math.PI*2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = "rgba(0,0,0,.55)";
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(x-r*.33,y-r*.36,r*.27,0,Math.PI*2);
+    ctx.fillStyle = "rgba(255,255,255,.30)";
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function roundRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+
+  function cubic(p0,p1,p2,p3,t){
+    const u = 1-t;
+    return {
+      x: u*u*u*p0.x + 3*u*u*t*p1.x + 3*u*t*t*p2.x + t*t*t*p3.x,
+      y: u*u*u*p0.y + 3*u*u*t*p1.y + 3*u*t*t*p2.y + t*t*t*p3.y
+    };
+  }
+
+  function polylineLength(poly){
+    let total = 0;
+    for(let i=1;i<poly.length;i++) total += dist(poly[i-1], poly[i]);
+    return total;
+  }
+
+  function resamplePolyline(poly, count, excludeEnds){
+    if(count <= 0 || poly.length < 2) return [];
+    const lengths = [0];
+    let total = 0;
+    for(let i=1;i<poly.length;i++){
+      total += dist(poly[i-1], poly[i]);
+      lengths.push(total);
+    }
+
+    const pts = [];
+    for(let i=0;i<count;i++){
+      const t = excludeEnds ? (i+1)/(count+1) : (count===1 ? 0 : i/(count-1));
+      const target = total * t;
+      let j = 1;
+      while(j<lengths.length && lengths[j] < target) j++;
+      if(j >= lengths.length){
+        pts.push(poly[poly.length-1]);
+      } else {
+        const prev = lengths[j-1];
+        const seg = Math.max(0.0001, lengths[j]-prev);
+        const f = (target-prev)/seg;
+        pts.push(lerpPoint(poly[j-1], poly[j], f));
+      }
+    }
+    return pts;
+  }
+
+  function pointAtIndex(points, idx){
+    const n = points.length;
+    if(n === 0) return {x:0,y:0};
+    let x = ((idx % n) + n) % n;
+    const i = Math.floor(x);
+    const f = x - i;
+    return lerpPoint(points[i], points[(i+1)%n], smooth(f));
+  }
+
+  function lerpPoint(a,b,t){ return {x:a.x+(b.x-a.x)*t, y:a.y+(b.y-a.y)*t}; }
+  function smooth(t){ return t*t*(3-2*t); }
+  function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+  function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+  function hitGate(x,y){
+    const gx = gateCenterX();
+
+    const betweenColumns = Math.abs(x - gx) < layout.colSep*0.34 &&
+                           y >= layout.slotTop-layout.spacing*.8 &&
+                           y <= layout.slotBottom+layout.spacing*.8;
+
+    const topHandle = Math.abs(x - gx) < layout.colSep*.55 &&
+                      Math.abs(y - (layout.topY - layout.spacing*0.58)) < layout.spacing*.65;
+
+    const bottomHandle = Math.abs(x - gx) < layout.colSep*.55 &&
+                         Math.abs(y - (layout.bottomY + layout.spacing*0.58)) < layout.spacing*.65;
+
+    return betweenColumns || topHandle || bottomHandle;
+  }
+
+  function distanceToSegment(p,a,b){
+    const vx = b.x-a.x, vy = b.y-a.y;
+    const wx = p.x-a.x, wy = p.y-a.y;
+    const c1 = vx*wx + vy*wy;
+    if(c1 <= 0) return dist(p,a);
+    const c2 = vx*vx + vy*vy;
+    if(c2 <= c1) return dist(p,b);
+    const t = c1/c2;
+    return dist(p, {x:a.x+vx*t, y:a.y+vy*t});
+  }
+
+  function distanceToPolyline(p, poly){
+    let best = Infinity;
+    for(let i=1;i<poly.length;i++){
+      best = Math.min(best, distanceToSegment(p, poly[i-1], poly[i]));
+    }
+    return best;
+  }
+
+  function hitLoop(x,y,loopIndex){
+    const p = {x,y};
+    let d = distanceToPolyline(p, getOuterPathPolyline(loopIndex));
+    const slotX = loopIndex === 0 ? layout.leftSlotX : layout.rightSlotX;
+    d = Math.min(d, distanceToSegment(p, {x:slotX,y:layout.slotTop}, {x:slotX,y:layout.slotBottom}));
+    return d < layout.spacing*1.35;
+  }
+
+  function loopAngle(x,y,loopIndex){
+    const cx = loopIndex === 0 ? (layout.leftOuterX+layout.leftSlotX)/2 : (layout.rightOuterX+layout.rightSlotX)/2;
+    const cy = layout.midY;
+    return Math.atan2(y-cy, x-cx);
+  }
+
+  function pointerPos(e){
+    const r = canvas.getBoundingClientRect();
+    return {x:e.clientX-r.left, y:e.clientY-r.top};
+  }
+
+  canvas.addEventListener("pointerdown", e=>{
+    e.preventDefault();
+    const p = pointerPos(e);
+    let mode = "none";
+    let loopIndex = -1;
+
+    const hitL = hitLoop(p.x,p.y,0);
+    const hitR = hitLoop(p.x,p.y,1);
+    if(hitL && canRotate(0)){
+      mode = "loop";
+      loopIndex = 0;
+    } else if(hitR && canRotate(1)){
+      mode = "loop";
+      loopIndex = 1;
+    } else if(hitGate(p.x,p.y)){
+      mode = "gate";
+    } else if(hitL){
+      mode = "loop";
+      loopIndex = 0;
+    } else if(hitR){
+      mode = "loop";
+      loopIndex = 1;
+    }
+
+    pointer = {
+      id:e.pointerId,
+      mode,
+      loopIndex,
+      startX:p.x,
+      startY:p.y,
+      moved:false,
+      startGateVisual:gateVisualPos,
+      gateFloat:gateVisualPos,
+      lastAngle:loopIndex>=0 ? loopAngle(p.x,p.y,loopIndex) : 0,
+      loopOffset:0
+    };
+
+    canvas.setPointerCapture(e.pointerId);
+  }, {passive:false});
+
+  canvas.addEventListener("pointermove", e=>{
+    if(!pointer || pointer.id !== e.pointerId) return;
+    e.preventDefault();
+
+    const p = pointerPos(e);
+    const dx = p.x - pointer.startX;
+    const dy = p.y - pointer.startY;
+
+    if(Math.hypot(dx,dy) > 7){
+      pointer.moved = true;
+    }
+
+    if(pointer.mode === "gate"){
+      pointer.gateFloat = clamp(pointer.startGateVisual + dx/layout.colSep, -1, 1);
+      gateVisualPos = pointer.gateFloat;
+      draw();
+      return;
+    }
+
+    if(pointer.mode === "loop"){
+      const li = pointer.loopIndex;
+      if(!canRotate(li) || isGateMoving()){
+        return;
+      }
+
+      const a = loopAngle(p.x,p.y,li);
+      let da = a - pointer.lastAngle;
+      while(da > Math.PI) da -= Math.PI*2;
+      while(da < -Math.PI) da += Math.PI*2;
+      pointer.lastAngle = a;
+
+      const directionFix = li === 1 ? -1 : 1;
+      const pathLen = getLoopTokens(li).length;
+      const threshold = Math.PI*2 / pathLen;
+      pointer.loopOffset += directionFix * da / threshold;
+      draw();
+    }
+  }, {passive:false});
+
+  canvas.addEventListener("pointerup", endPointer, {passive:false});
+  canvas.addEventListener("pointercancel", endPointer, {passive:false});
+
+  function endPointer(e){
+    if(!pointer || pointer.id !== e.pointerId) return;
+    e.preventDefault();
+
+    if(pointer.mode === "gate"){
+      const f = pointer.gateFloat;
+      const target = f < -0.35 ? POS.LEFT : f > 0.35 ? POS.RIGHT : POS.CENTER;
+      if(pointer.moved){
+        setGatePosition(target, f);
+      } else {
+        gateVisualPos = state.gate.position;
+        draw();
+      }
+    } else if(pointer.mode === "loop"){
+      const li = pointer.loopIndex;
+      if(pointer.moved && canRotate(li) && !isGateMoving()){
+        const raw = pointer.loopOffset;
+        const steps = Math.round(raw);
+        const remainder = raw - steps;
+        commitRotate(li, steps);
+        snapOffsets[li] = remainder;
+        animateSnap(li, remainder);
+      } else {
+        snapOffsets[li] = 0;
+        draw();
+      }
+    }
+
+    pointer = null;
+  }
+
+  function animateSnap(loopIndex, from){
+    const start = performance.now();
+    const dur = 120;
+    function step(now){
+      const t = clamp((now-start)/dur, 0, 1);
+      const e = 1 - Math.pow(1-t, 3);
+      snapOffsets[loopIndex] = from * (1-e);
+      draw();
+      if(t < 1) requestAnimationFrame(step);
+      else {
+        snapOffsets[loopIndex] = 0;
+        draw();
+      }
+    }
+    requestAnimationFrame(step);
+  }
+
+  function ensureRAF(){
+    if(rafActive) return;
+    rafActive = true;
+    requestAnimationFrame(tick);
+  }
+
+  function tick(now){
+    rafActive = false;
+    if(gateAnim){
+      const t = clamp((now-gateAnim.start)/gateAnim.dur, 0, 1);
+      const e = 1 - Math.pow(1-t, 3);
+      gateVisualPos = gateAnim.from + (gateAnim.to-gateAnim.from)*e;
+      draw();
+      if(t < 1){
+        rafActive = true;
+        requestAnimationFrame(tick);
+      } else {
+        gateVisualPos = state.gate.position;
+        gateAnim = null;
+        draw();
+      }
+    }
+  }
+
+  resetBtn.addEventListener("click", e=>{
+    e.preventDefault();
+    e.stopPropagation();
+    reset();
+  }, {passive:false});
+
+  winClose.addEventListener("click", e=>{
+    e.preventDefault();
+    e.stopPropagation();
+    closeWin();
+  }, {passive:false});
+
+  winOverlay.addEventListener("click", e=>{
+    if(e.target === winOverlay) closeWin();
+  });
+
+  window.addEventListener("resize", resize);
+
+  // Always start from a new random board when the file is opened.
+  // This prevents an old completed board in localStorage from appearing instantly solved.
+  state = randomState();
+  solvedMessageClosed = false;
+  save();
+  gateVisualPos = state.gate.position;
+  resize();
+})();
+</script>
 </body>
 </html>
